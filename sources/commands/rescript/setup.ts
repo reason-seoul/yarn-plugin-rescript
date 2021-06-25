@@ -54,7 +54,7 @@ export default class SetupCommand extends BaseCommand {
       return 0;
     }
 
-    const resConfig = JSON.parse(await fsApi.readFileAsync(resConfigPath, 'utf8'));
+    const resConfig = JSON.parse(await fsApi.readFilePromise(resConfigPath, 'utf8'));
     const resDependencies = resConfig['bs-dependencies'] || [];
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
 
