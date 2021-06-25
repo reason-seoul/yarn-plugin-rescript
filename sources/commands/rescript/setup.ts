@@ -1,6 +1,15 @@
 import { Cli } from 'clipanion';
 import type { Ident, Descriptor } from '@yarnpkg/core';
-import { Configuration, Project, structUtils, ThrowReport } from '@yarnpkg/core';
+import {
+  Cache,
+  Configuration,
+  Project,
+  StreamReport,
+  ThrowReport,
+  MessageName,
+  structUtils,
+  formatUtils,
+} from '@yarnpkg/core';
 import type { PortablePath } from '@yarnpkg/fslib';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 import { BaseCommand } from '@yarnpkg/cli';
@@ -25,15 +34,9 @@ export default class SetupCommand extends BaseCommand {
 
     let exitCode = 0;
 
-    const config = await Configuration.find(
-      this.context.cwd,
-      this.context.plugins,
-    );
-
-    const { project, workspace } = await Project.find(
-      config,
-      this.context.cwd,
-    );
+    const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
+    const { project, workspace } = await Project.find(configuration, this.context.cwd);
+    const cache = await Cache.find(configuration);
 
     const fsApi = new NodeFS();
     async function link(target: PortablePath, dest: PortablePath) {
@@ -59,6 +62,7 @@ export default class SetupCommand extends BaseCommand {
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
 
     await project.resolveEverything({
+      cache,
       lockfileOnly: true,
       report: new ThrowReport(),
     });
@@ -95,61 +99,101 @@ export default class SetupCommand extends BaseCommand {
     if (true) {
       const essentials = Cli.from(Essentials.commands);
 
-      exitCode = await essentials.run([
-        'add',
-        [...dependenciesNeedInstall].join(' ')
-      ], this.context);
-      if (exitCode !== 0) {
-        return exitCode;
-      }
-      for (const packageName of dependenciesNeedInstall) {
-        const ident = structUtils.parseIdent(packageName);
-        const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        if (descriptor) {
-          dependencyResolutions.set(packageName, { ident, descriptor });
+      if (dependenciesNeedInstall.size > 0) {
+        exitCode = await essentials.run([
+          'add',
+          [...dependenciesNeedInstall].join(' '),
+        ], this.context);
+        if (exitCode !== 0) {
+          return exitCode;
+        }
+        for (const packageName of dependenciesNeedInstall) {
+          const ident = structUtils.parseIdent(packageName);
+          const descriptor = topLevelPkg.dependencies.get(ident.identHash);
+          if (descriptor) {
+            dependencyResolutions.set(packageName, { ident, descriptor });
+          }
         }
       }
 
-      exitCode = await essentials.run([
-        'add',
-        '--dev',
-        [...devDependenciesNeedInstall].join(' '),
-      ], this.context);
-      if (exitCode !== 0) {
-        return exitCode;
-      }
-      for (const packageName of devDependenciesNeedInstall) {
-        const ident = structUtils.parseIdent(packageName);
-        const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        if (descriptor) {
-          devDependencyResolutions.set(packageName, { ident, descriptor });
+      if (devDependenciesNeedInstall.size > 0) {
+        exitCode = await essentials.run([
+          'add',
+          '--dev',
+          [...devDependenciesNeedInstall].join(' '),
+        ], this.context);
+        if (exitCode !== 0) {
+          return exitCode;
+        }
+        for (const packageName of devDependenciesNeedInstall) {
+          const ident = structUtils.parseIdent(packageName);
+          const descriptor = topLevelPkg.dependencies.get(ident.identHash);
+          if (descriptor) {
+            devDependencyResolutions.set(packageName, { ident, descriptor });
+          }
         }
       }
     }
 
+    const allDependencyResolutions = new Map([...dependencyResolutions, ...devDependencyResolutions]);
+
+    // TODO: Collect all bs-dependencies
+    // 생각해보니까 Traversal 할 때 ZipFS 로 열어야함
+    // 디펜던시가 사용하는 Resolver 가 뭔지 알 수 없음
+    // 예를 들면 뭐... File이나 Portal 같은거 쓸 수도 있고...
+
     // Unplug all the ReScript dependencies
-    const pnp = Cli.from(Pnp.commands);
-    exitCode = await pnp.run([
-      'unplug',
-      [...dependencyResolutions.keys(), ...devDependencyResolutions.keys()].join(' '),
-    ], this.context);
+    const unplug = await StreamReport.start({
+      configuration,
+      stdout: this.context.stdout,
+      json: this.json,
+    }, async report => {
+      for (const [, { descriptor }] of allDependencyResolutions) {
+        const resolution = project.storedResolutions.get(descriptor.descriptorHash);
+        const pkg = project.storedPackages.get(resolution);
+        const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
+
+        const version = pkg.version ?? `unknown`;
+        const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
+          structUtils.makeDescriptor(pkg, version),
+        );
+        dependencyMeta.unplugged = true;
+
+        report.reportInfo(
+          MessageName.UNNAMED,
+          `Will unpack ${structUtils.prettyLocator(configuration, pkg)} to ${formatUtils.pretty(configuration, pnpUtils.getUnpluggedPath(pkg, {configuration}), formatUtils.Type.PATH)}`,
+        );
+        report.reportJson({
+          locator: structUtils.stringifyLocator(pkg),
+          version,
+        });
+      }
+      await project.topLevelWorkspace.persistManifest();
+
+      report.reportSeparator();
+
+      await project.install({ cache, report });
+    });
+    exitCode = unplug.exitCode();
     if (exitCode !== 0) {
       return exitCode;
     }
 
     // Link to node_modules
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
-    const allDependenciesToDescriptors = new Map([...dependencyResolutions, ...devDependencyResolutions]);
-    for (const [packageName, { ident, descriptor }] of allDependenciesToDescriptors) {
+    for (const [packageName, { ident, descriptor }] of allDependencyResolutions) {
       const resolution = project.storedResolutions.get(descriptor.descriptorHash);
       const pkg = project.storedPackages.get(resolution);
-      const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration: project.configuration });
+      const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
 
       const targetPath = ppath.join(unpluggedPath, Filename.nodeModules, packageName);
-      const destPathDir = ppath.join(nodeModules, '@' + ident.scope);
       const destPath = ppath.join(nodeModules, packageName);
 
-      await fsApi.mkdirPromise(destPathDir, { recursive: true });
+      if (ident.scope) {
+        const destPathDir = ppath.join(nodeModules, '@' + ident.scope);
+        await fsApi.mkdirPromise(destPathDir, { recursive: true });
+      }
+
       await link(targetPath, destPath);
     }
 

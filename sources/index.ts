@@ -18,7 +18,7 @@ const afterAllInstalled: NonNullable<CoreHooks['afterAllInstalled']> = () => {
 
 const plugin: Plugin<CoreHooks> = {
   hooks: {
-    afterAllInstalled,
+//    afterAllInstalled,
   },
   commands: [
     SetupCommand,
