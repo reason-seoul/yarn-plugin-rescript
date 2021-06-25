@@ -44,7 +44,6 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["@yarnpkg/plugin-pnp", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.0.0-rc.6"],
             ["@yarnpkg/pnpify", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.0.0-rc.7"],
             ["clipanion", "virtual:76548c39d93681113321b878a7555e6342118be71840eac4ca3893cf1acc7efb115c1779fc5b114232a2fa19eee13b7abf9891f1a186ed278187367aff33f38f#npm:3.0.0-rc.12"],
-            ["rescript", "npm:9.1.4"],
             ["typescript", "patch:typescript@npm%3A4.3.4#~builtin<compat/typescript>::version=4.3.4&hash=34ad7d"]
           ],
           "linkType": "SOFT",
@@ -3914,15 +3913,6 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "linkType": "HARD",
         }]
       ]],
-      ["rescript", [
-        ["npm:9.1.4", {
-          "packageLocation": "./.yarn/unplugged/rescript-npm-9.1.4-75c65d01e7/node_modules/rescript/",
-          "packageDependencies": [
-            ["rescript", "npm:9.1.4"]
-          ],
-          "linkType": "HARD",
-        }]
-      ]],
       ["resolve-alpn", [
         ["npm:1.0.0", {
           "packageLocation": "./.yarn/cache/resolve-alpn-npm-1.0.0-f655c150b7-146b739f14.zip/node_modules/resolve-alpn/",
@@ -4721,7 +4711,6 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["@yarnpkg/plugin-pnp", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.0.0-rc.6"],
             ["@yarnpkg/pnpify", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.0.0-rc.7"],
             ["clipanion", "virtual:76548c39d93681113321b878a7555e6342118be71840eac4ca3893cf1acc7efb115c1779fc5b114232a2fa19eee13b7abf9891f1a186ed278187367aff33f38f#npm:3.0.0-rc.12"],
-            ["rescript", "npm:9.1.4"],
             ["typescript", "patch:typescript@npm%3A4.3.4#~builtin<compat/typescript>::version=4.3.4&hash=34ad7d"]
           ],
           "linkType": "SOFT",

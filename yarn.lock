@@ -3106,18 +3106,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rescript@npm:^9.1.4":
-  version: 9.1.4
-  resolution: "rescript@npm:9.1.4"
-  bin:
-    bsc: bsc
-    bsrefmt: bsrefmt
-    bstracing: lib/bstracing
-    rescript: rescript
-  checksum: 3c503580f968b4d4409830093c57f85b5590f7372250345427b3a7c1f5ccb08009e1edd89b4a3dcbb3ee95ee4dcad9c337ece4d1f8fdaa10e22ed04b8a7495c0
-  languageName: node
-  linkType: hard
-
 "resolve-alpn@npm:^1.0.0":
   version: 1.0.0
   resolution: "resolve-alpn@npm:1.0.0"
@@ -3820,11 +3808,7 @@ typescript@^4.3.4:
     "@yarnpkg/plugin-pnp": ^3.0.0-rc.6
     "@yarnpkg/pnpify": ^3.0.0-rc.7
     clipanion: ^3.0.0-rc.12
-    rescript: ^9.1.4
     typescript: ^4.3.4
-  dependenciesMeta:
-    rescript@9.1.4:
-      unplugged: true
   languageName: unknown
   linkType: soft
 
