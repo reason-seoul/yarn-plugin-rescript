@@ -102,10 +102,12 @@ export default class SetupCommand extends BaseCommand {
       if (exitCode !== 0) {
         return exitCode;
       }
-      for (const dependencyName of dependenciesNeedInstall) {
-        const ident = structUtils.parseIdent(dependencyName);
+      for (const packageName of dependenciesNeedInstall) {
+        const ident = structUtils.parseIdent(packageName);
         const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        dependencyResolutions.set(dependencyName, descriptor!);
+        if (descriptor) {
+          dependencyResolutions.set(packageName, { ident, descriptor });
+        }
       }
 
       exitCode = await essentials.run([
@@ -116,10 +118,12 @@ export default class SetupCommand extends BaseCommand {
       if (exitCode !== 0) {
         return exitCode;
       }
-      for (const dependencyName of devDependenciesNeedInstall) {
-        const ident = structUtils.parseIdent(dependencyName);
+      for (const packageName of devDependenciesNeedInstall) {
+        const ident = structUtils.parseIdent(packageName);
         const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        devDependencyResolutions.set(dependencyName, descriptor!);
+        if (descriptor) {
+          devDependencyResolutions.set(packageName, { ident, descriptor });
+        }
       }
     }
 
