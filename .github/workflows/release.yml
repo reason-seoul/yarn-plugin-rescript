@@ -1,0 +1,52 @@
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+name: Publish the plugin
+
+jobs:
+  build-and-publish:
+    name: Build w/ Node.js and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js 14.x
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14
+
+      - name: Install dependencies
+        run: yarn install --immutable --immutable-cache
+        shell: bash
+
+      - name: Build artifact
+        run: yarn build
+
+      - name: Get the short git sha
+        id: git-sha
+        run: echo "::set-output name=short::$(git rev-parse --short HEAD)"
+
+      - name: Create a prerelease on push
+        if: startsWith(github.ref, 'refs/heads/')
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: Prerelease - ${{ steps.git-sha.outputs.short }}
+          tag_name: v0.0.0-${{ steps.git-sha.outputs.short }}
+          prerelease: true
+          files: |
+            bundles/@yarnpkg/*
+
+      - name: Create a release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            bundles/@yarnpkg/*
