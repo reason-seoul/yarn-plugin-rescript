@@ -1,30 +1,25 @@
-import { Cli } from 'clipanion';
-import type { Ident, Descriptor } from '@yarnpkg/core';
+import { Command, UsageError } from 'clipanion';
+import { Package, semverUtils, Workspace, LocatorHash, miscUtils } from '@yarnpkg/core';
 import {
   Cache,
   Configuration,
   Project,
-  StreamReport,
   ThrowReport,
-  MessageName,
   structUtils,
   formatUtils,
 } from '@yarnpkg/core';
-import type { PortablePath } from '@yarnpkg/fslib';
+import { PortablePath, xfs } from '@yarnpkg/fslib';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
-import { BaseCommand } from '@yarnpkg/cli';
+import { BaseCommand, WorkspaceRequiredError } from '@yarnpkg/cli';
 import Essentials from '@yarnpkg/plugin-essentials';
-import Pnp, { pnpUtils } from '@yarnpkg/plugin-pnp';
+import micromatch from 'micromatch';
+import semver from 'semver';
 
 // 1. bsconfig.json 에서 디펜던시 정보 읽는다!
-// 2. rescript 의존성을 unplug 한다! (없으면 add 함)
-// 3. node_modules 아래 symbolic link 만든다!
+// 2. rescript 의존성을 node_modules 아래에 복사한다!
 
 export default class SetupCommand extends BaseCommand {
-  static paths = [
-    ['res', 'setup'],
-  ];
-
+  @Command.Path('set', 'rescript')
   async execute() {
     if (!Essentials.commands) {
       throw new Error(
@@ -38,19 +33,13 @@ export default class SetupCommand extends BaseCommand {
     const { project, workspace } = await Project.find(configuration, this.context.cwd);
     const cache = await Cache.find(configuration);
 
-    const fsApi = new NodeFS();
-    async function link(target: PortablePath, dest: PortablePath) {
-      try {
-        await fsApi.symlinkPromise(target, dest);
-      } catch (err) {
-        if (err?.code === 'EEXIST') {
-          await fsApi.unlinkPromise(dest);
-          await link(target, dest);
-        }
-      }
-    }
+    if (!workspace)
+      throw new WorkspaceRequiredError(project.cwd, this.context.cwd);
 
-    const resConfigPath = ppath.join(workspace.cwd, 'bsconfig.json');
+    await project.restoreInstallState();
+
+    const fsApi = new NodeFS();
+    const resConfigPath = ppath.join(workspace.cwd, 'bsconfig.json' as Filename);
     const resConfigExist = await fsApi.existsPromise(resConfigPath);
     if (!resConfigExist) {
       console.log('TODO: res init first');
@@ -61,140 +50,100 @@ export default class SetupCommand extends BaseCommand {
     const resDependencies = resConfig['bs-dependencies'] || [];
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
 
-    await project.resolveEverything({
+    const patterns: Array<string> = ['gentype'].concat(resDependencies, resDevDependencies)
+
+    const unreferencedPatterns = new Set(patterns);
+
+    const matchers = patterns.map(pattern => {
+      const patternDescriptor = structUtils.parseDescriptor(pattern);
+      const pseudoDescriptor = patternDescriptor.range !== `unknown`
+        ? patternDescriptor
+        : structUtils.makeDescriptor(patternDescriptor, `*`);
+
+      if (!semver.validRange(pseudoDescriptor.range))
+        throw new UsageError(`The range of the descriptor patterns must be a valid semver range (${structUtils.prettyDescriptor(configuration, pseudoDescriptor)})`);
+
+      return (pkg: Package) => {
+        const stringifiedIdent = structUtils.stringifyIdent(pkg);
+        if (!micromatch.isMatch(stringifiedIdent, structUtils.stringifyIdent(pseudoDescriptor)))
+          return false;
+
+        if (pkg.version && !semverUtils.satisfiesWithPrereleases(pkg.version, pseudoDescriptor.range))
+          return false;
+
+        unreferencedPatterns.delete(pattern);
+
+        return true;
+      };
+    });
+
+    const getSelectedPackages = (roots: Array<Workspace>) => {
+      const seen: Set<LocatorHash> = new Set();
+      const selection: Array<Package> = [];
+
+      const traverse = (pkg: Package, depth: number) => {
+        if (seen.has(pkg.locatorHash))
+          return;
+
+        seen.add(pkg.locatorHash);
+
+        // Note: We shouldn't skip virtual packages, as
+        // we don't iterate over the devirtualized copies.
+        if (!project.tryWorkspaceByLocator(pkg) && matchers.some(matcher => matcher(pkg)))
+          selection.push(pkg);
+
+        // Don't recurse unless requested
+        if (depth > 0 && !false)
+          return;
+
+        for (const dependency of pkg.dependencies.values()) {
+          const resolution = project.storedResolutions.get(dependency.descriptorHash);
+          if (!resolution)
+            throw new Error(`Assertion failed: The resolution should have been registered`);
+
+          const nextPkg = project.storedPackages.get(resolution);
+          if (!nextPkg)
+            throw new Error(`Assertion failed: The package should have been registered`);
+
+          traverse(nextPkg, depth + 1);
+        }
+      };
+
+      for (const workspace of roots) {
+        const pkg = project.storedPackages.get(workspace.anchoredLocator.locatorHash);
+        if (!pkg)
+          throw new Error(`Assertion failed: The package should have been registered`);
+
+        traverse(pkg, 0);
+      }
+
+      return selection;
+    };
+
+    const selectedPackages = getSelectedPackages([workspace])
+    
+    if (unreferencedPatterns.size > 0)
+      throw new UsageError(`${formatUtils.prettyList(configuration, unreferencedPatterns, formatUtils.Type.CODE)} in bsconfig.json and not in package.json`)
+
+    const selection = miscUtils.sortMap(selectedPackages, pkg => {
+      return structUtils.stringifyLocator(pkg);
+    });
+
+    const fetcher = configuration.makeFetcher();
+    const fetcherOptions = {
+      project,
+      fetcher,
       cache,
-      lockfileOnly: true,
-      report: new ThrowReport(),
-    });
-
-    const topLevelPkg = project.storedPackages.get(project.topLevelWorkspace.anchoredLocator.locatorHash);
-
-    type ResolutionBase = { ident: Ident, descriptor: Descriptor };
-
-    const dependencyResolutions = new Map<string, ResolutionBase>();
-    const dependenciesNeedInstall = new Set<string>();
-    for (const packageName of resDependencies) {
-      const ident = structUtils.parseIdent(packageName);
-      const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-      if (descriptor) {
-        dependencyResolutions.set(packageName, { ident, descriptor });
-      } else {
-        dependenciesNeedInstall.add(packageName);
-      }
+      report: new ThrowReport,
+      checksums: project.storedChecksums,
     }
 
-    const devDependencyResolutions = new Map<string, ResolutionBase>();
-    const devDependenciesNeedInstall = new Set<string>();
-    for (const packageName of resDevDependencies) {
-      const ident = structUtils.parseIdent(packageName);
-      const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-      if (descriptor) {
-        devDependencyResolutions.set(packageName, { ident, descriptor });
-      } else {
-        devDependenciesNeedInstall.add(packageName);
-      }
-    }
-
-    // TODO: with or without install
-    if (true) {
-      const essentials = Cli.from(Essentials.commands);
-
-      if (dependenciesNeedInstall.size > 0) {
-        exitCode = await essentials.run([
-          'add',
-          [...dependenciesNeedInstall].join(' '),
-        ], this.context);
-        if (exitCode !== 0) {
-          return exitCode;
-        }
-        for (const packageName of dependenciesNeedInstall) {
-          const ident = structUtils.parseIdent(packageName);
-          const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-          if (descriptor) {
-            dependencyResolutions.set(packageName, { ident, descriptor });
-          }
-        }
-      }
-
-      if (devDependenciesNeedInstall.size > 0) {
-        exitCode = await essentials.run([
-          'add',
-          '--dev',
-          [...devDependenciesNeedInstall].join(' '),
-        ], this.context);
-        if (exitCode !== 0) {
-          return exitCode;
-        }
-        for (const packageName of devDependenciesNeedInstall) {
-          const ident = structUtils.parseIdent(packageName);
-          const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-          if (descriptor) {
-            devDependencyResolutions.set(packageName, { ident, descriptor });
-          }
-        }
-      }
-    }
-
-    const allDependencyResolutions = new Map([...dependencyResolutions, ...devDependencyResolutions]);
-
-    // TODO: Collect all bs-dependencies
-    // 생각해보니까 Traversal 할 때 ZipFS 로 열어야함
-    // 디펜던시가 사용하는 Resolver 가 뭔지 알 수 없음
-    // 예를 들면 뭐... File이나 Portal 같은거 쓸 수도 있고...
-
-    // Unplug all the ReScript dependencies
-    const unplug = await StreamReport.start({
-      configuration,
-      stdout: this.context.stdout,
-      json: this.json,
-    }, async report => {
-      for (const [, { descriptor }] of allDependencyResolutions) {
-        const resolution = project.storedResolutions.get(descriptor.descriptorHash);
-        const pkg = project.storedPackages.get(resolution);
-        const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
-
-        const version = pkg.version ?? `unknown`;
-        const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
-          structUtils.makeDescriptor(pkg, version),
-        );
-        dependencyMeta.unplugged = true;
-
-        report.reportInfo(
-          MessageName.UNNAMED,
-          `Will unpack ${structUtils.prettyLocator(configuration, pkg)} to ${formatUtils.pretty(configuration, pnpUtils.getUnpluggedPath(pkg, {configuration}), formatUtils.Type.PATH)}`,
-        );
-        report.reportJson({
-          locator: structUtils.stringifyLocator(pkg),
-          version,
-        });
-      }
-      await project.topLevelWorkspace.persistManifest();
-
-      report.reportSeparator();
-
-      await project.install({ cache, report });
-    });
-    exitCode = unplug.exitCode();
-    if (exitCode !== 0) {
-      return exitCode;
-    }
-
-    // Link to node_modules
-    const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
-    for (const [packageName, { ident, descriptor }] of allDependencyResolutions) {
-      const resolution = project.storedResolutions.get(descriptor.descriptorHash);
-      const pkg = project.storedPackages.get(resolution);
-      const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
-
-      const targetPath = ppath.join(unpluggedPath, Filename.nodeModules, packageName);
-      const destPath = ppath.join(nodeModules, packageName);
-
-      if (ident.scope) {
-        const destPathDir = ppath.join(nodeModules, '@' + ident.scope);
-        await fsApi.mkdirPromise(destPathDir, { recursive: true });
-      }
-
-      await link(targetPath, destPath);
+    for (const pkg of selection) {
+      const fetchResult = await fetcher.fetch(pkg, fetcherOptions)
+      await xfs.copyPromise(project.cwd, PortablePath.dot, {
+        baseFs: fetchResult.packageFs as any,
+        overwrite: false
+      });
     }
 
     return exitCode;
