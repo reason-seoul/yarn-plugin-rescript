@@ -6,7 +6,8 @@
     "target": "ES2018",
     "lib": [
       "ES2018"
-    ]
+    ],
+    "esModuleInterop": true
   },
   "include": [
     "sources/**/*.ts"
