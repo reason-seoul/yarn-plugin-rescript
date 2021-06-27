@@ -17,10 +17,14 @@
     "@yarnpkg/fslib": "2.5.0-rc.6",
     "@yarnpkg/plugin-essentials": "^2.4.0",
     "@yarnpkg/plugin-pnp": "^2.4.0",
-    "clipanion": "^2.6.2"
+    "clipanion": "^2.6.2",
+    "micromatch": "^4.0.4",
+    "semver": "^7.3.5"
   },
   "devDependencies": {
+    "@types/micromatch": "^4.0.1",
     "@types/node": "^15.12.4",
+    "@types/semver": "^7.3.6",
     "@yarnpkg/builder": "^2.1.3",
     "@yarnpkg/pnpify": "^2.4.0",
     "typescript": "^4.3.4"
