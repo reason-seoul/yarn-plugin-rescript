@@ -1,5 +1,5 @@
 import { Command, UsageError } from 'clipanion';
-import { Package, semverUtils, Workspace, LocatorHash, miscUtils } from '@yarnpkg/core';
+import { Package, semverUtils, Workspace, LocatorHash, miscUtils, Locator } from '@yarnpkg/core';
 import {
   Cache,
   Configuration,
@@ -14,6 +14,10 @@ import { BaseCommand, WorkspaceRequiredError } from '@yarnpkg/cli';
 import Essentials from '@yarnpkg/plugin-essentials';
 import micromatch from 'micromatch';
 import semver from 'semver';
+
+function getUnpluggedPath(locator: Locator, {configuration}: {configuration: Configuration}) {
+  return ppath.resolve(configuration.get(`pnpUnpluggedFolder`), structUtils.slugifyLocator(locator));
+}
 
 // 1. bsconfig.json 에서 디펜던시 정보 읽는다!
 // 2. rescript 의존성을 node_modules 아래에 복사한다!
@@ -139,11 +143,17 @@ export default class SetupCommand extends BaseCommand {
     }
 
     for (const pkg of selection) {
-      const fetchResult = await fetcher.fetch(pkg, fetcherOptions)
-      await xfs.copyPromise(project.cwd, PortablePath.dot, {
-        baseFs: fetchResult.packageFs as any,
-        overwrite: false
-      });
+      // postinstall을 사용하는 package는 unplug된 폴더를 사용
+      const unplugPath = getUnpluggedPath(pkg, { configuration })
+      if (await xfs.existsPromise(unplugPath)) {
+        await xfs.copyPromise(project.cwd, unplugPath);
+      } else {
+        const fetchResult = await fetcher.fetch(pkg, fetcherOptions)
+        await xfs.copyPromise(project.cwd, PortablePath.dot, {
+          baseFs: fetchResult.packageFs as any,
+          overwrite: false
+        });
+      }
     }
 
     return exitCode;
