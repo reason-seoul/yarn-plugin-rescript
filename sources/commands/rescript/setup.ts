@@ -51,10 +51,20 @@ export default class SetupCommand extends BaseCommand {
     }
 
     const resConfig = JSON.parse(await fsApi.readFilePromise(resConfigPath, 'utf8'));
+
     const resDependencies = resConfig['bs-dependencies'] || [];
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
 
-    const patterns: Array<string> = ['gentype'].concat(resDependencies, resDevDependencies)
+    // TODO: ppx-flags에서만 필요하고 bs-dependencies에는 추가 되면 안되는 케이스가 존재 (tailwind-ppx)
+    // 현재 사용중인 bsconfig의 ppx-flags 설정을 참고하여 구현
+    // 추가 케이스가 발견될 경우 대응이 필요
+    const resPpxFlags = (resConfig['ppx-flags'] || [])
+      .map((ppx: any) => Array.isArray(ppx) ?  ppx[0] : ppx)
+      .map((ppx: string) =>
+        ppx.split("/").slice(0, -1).slice(0, 2).join("/")
+      )
+
+    const patterns: Array<string> = ['gentype'].concat(resDependencies, resDevDependencies, resPpxFlags)
 
     const unreferencedPatterns = new Set(patterns);
 
