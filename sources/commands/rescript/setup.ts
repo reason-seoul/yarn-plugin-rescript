@@ -152,11 +152,18 @@ export default class SetupCommand extends BaseCommand {
       checksums: project.storedChecksums,
     }
 
+    // TODO: import 할 때 경로 문제가 있어 단순 복사하면 안되고
+    // 모든 패키지를 반드시 unplug하고 symlink를 만들어야 함.
+
     for (const pkg of selection) {
       // postinstall을 사용하는 package는 unplug된 폴더를 사용
       const unplugPath = getUnpluggedPath(pkg, { configuration })
       if (await xfs.existsPromise(unplugPath)) {
-        await xfs.copyPromise(project.cwd, unplugPath);
+        const fetchResult = await fetcher.fetch(pkg, fetcherOptions)
+        const srcPath = ppath.join(unplugPath, fetchResult.prefixPath);
+        const dstPath = ppath.join(project.cwd, fetchResult.prefixPath)
+        await xfs.mkdirpPromise(ppath.dirname(dstPath))
+        await xfs.symlinkPromise(ppath.relative(ppath.dirname(dstPath), srcPath), dstPath);
       } else {
         const fetchResult = await fetcher.fetch(pkg, fetcherOptions)
         await xfs.copyPromise(project.cwd, PortablePath.dot, {
