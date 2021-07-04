@@ -1,21 +1,16 @@
 import { Command } from 'clipanion';
-import type {
-  Locator,
-  Package,
-} from '@yarnpkg/core';
+import type { Package } from '@yarnpkg/core';
 import {
   Cache,
   Configuration,
   Project,
-  ThrowReport,
+  StreamReport,
   structUtils,
-  formatUtils,
 } from '@yarnpkg/core';
 import { BaseCommand, WorkspaceRequiredError } from '@yarnpkg/cli';
 import type { FakeFS, PortablePath } from '@yarnpkg/fslib';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 import { pnpUtils } from '@yarnpkg/plugin-pnp';
-
 
 export default class SetupCommand extends BaseCommand {
   static usage = Command.Usage({
@@ -23,6 +18,9 @@ export default class SetupCommand extends BaseCommand {
   });
 
   realFs = new NodeFS();
+
+  @Command.Boolean('Format the output as an NDJSON stream')
+  json: boolean;
 
   @Command.Path('res', 'setup')
   async execute() {
@@ -45,15 +43,6 @@ export default class SetupCommand extends BaseCommand {
       return 1;
     }
 
-    const fetcher = configuration.makeFetcher();
-    const fetcherOptions = {
-      project,
-      fetcher,
-      cache,
-      report: new ThrowReport,
-      checksums: project.storedChecksums,
-    };
-
     const topLevelPkg = project.storedPackages.get(project.topLevelWorkspace.anchoredLocator.locatorHash);
 
     const resConfig = await this.realFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
@@ -71,7 +60,6 @@ export default class SetupCommand extends BaseCommand {
       for (const pkgName of pkgNames) {
         const ident = structUtils.parseIdent(pkgName);
         const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        // const descriptor = structUtils.parseDescriptor(pkgName);
         const resolution = project.storedResolutions.get(descriptor.descriptorHash);
         if (!resolution) {
           throw new Error('Assertion failed: The resolution should have been registered');
@@ -94,10 +82,33 @@ export default class SetupCommand extends BaseCommand {
       ...resPpxDependencies,
     ]);
 
-    exitCode = await this.cli.run([
-      'unplug',
-      ...resPkgs.map(pkg => structUtils.stringifyIdent(pkg)),
-    ]);
+    const unplug = await StreamReport.start({
+      configuration,
+      stdout: this.context.stdout,
+      json: this.json,
+    }, async report => {
+      let shouldUnplug = false;
+      for (const pkg of resPkgs) {
+        const { version } = pkg;
+        const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
+          structUtils.makeDescriptor(pkg, version),
+        );
+        if (!dependencyMeta.unplugged) {
+          dependencyMeta.unplugged = true;
+          shouldUnplug = true;
+        }
+      }
+      if (shouldUnplug) {
+        await project.topLevelWorkspace.persistManifest();
+        report.reportSeparator();
+        await project.linkEverything({ cache, report });
+      }
+    });
+
+    exitCode = unplug.exitCode();
+    if (exitCode !== 0) {
+      return exitCode;
+    }
 
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
     for (const pkg of resPkgs) {
@@ -111,8 +122,6 @@ export default class SetupCommand extends BaseCommand {
       await this.realFs.mkdirpPromise(ppath.dirname(destPath));
       await this.linkPath(this.realFs, targetPath, destPath);
     }
-
-    // await project.install({ cache, report: new ThrowReport() });
 
     return exitCode;
   }

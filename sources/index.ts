@@ -4,6 +4,9 @@ import SetupCommand from './commands/setup';
 
 const plugin: Plugin = {
   hooks: {
+    afterAllInstalled: async () => {
+      console.log("afterAllInstalled")
+    },
   },
   commands: [
     SetupCommand,
