@@ -65,7 +65,7 @@ export default class SetupCommand extends BaseCommand {
         ppx.split("/").slice(0, -1).slice(0, 2).join("/")
       )
 
-    const patterns: Array<string> = ['gentype'].concat(resDependencies, resDevDependencies, resPpxFlags)
+    const patterns: Array<string> = ['gentype', 'rescript'].concat(resDependencies, resDevDependencies, resPpxFlags)
 
     const unreferencedPatterns = new Set(patterns);
 
