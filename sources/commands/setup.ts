@@ -48,11 +48,13 @@ export default class SetupCommand extends BaseCommand {
     const resConfig = await this.realFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
     const resDependencies = resConfig['bs-dependencies'] || [];
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
-    const resPpxDependencies= (resConfig['ppx-flags'] || [])
-      .map((ppx: any) => Array.isArray(ppx) ?  ppx[0] : ppx)
+    const resPpxDependencies = (resConfig['ppx-flags'] || [])
+      .map((ppx: any) => Array.isArray(ppx) ? ppx[0] : ppx)
       .map((ppx: string) =>
         ppx.split('/').slice(0, -1).slice(0, 2).join('/')
       );
+
+    const gentypeConfig = resConfig['gentypeconfig'];
 
     const getRescriptPackages = (pkgNames: string[]) => {
       const selection: Array<Package> = [];
@@ -77,10 +79,11 @@ export default class SetupCommand extends BaseCommand {
 
     const resPkgs = getRescriptPackages([
       'rescript',
+      gentypeConfig && 'gentype',
       ...resDependencies,
       ...resDevDependencies,
       ...resPpxDependencies,
-    ]);
+    ].filter(Boolean));
 
     const unplug = await StreamReport.start({
       configuration,
