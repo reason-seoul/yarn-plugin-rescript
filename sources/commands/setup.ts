@@ -1,9 +1,10 @@
 import { Command } from 'clipanion';
-import type { Package } from '@yarnpkg/core';
+import type { Workspace, Package, LocatorHash } from '@yarnpkg/core';
 import {
   Cache,
   Configuration,
   Project,
+  ThrowReport,
   StreamReport,
   structUtils,
 } from '@yarnpkg/core';
@@ -43,8 +44,6 @@ export default class SetupCommand extends BaseCommand {
       return 1;
     }
 
-    const topLevelPkg = project.storedPackages.get(project.topLevelWorkspace.anchoredLocator.locatorHash);
-
     const resConfig = await this.realFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
     const resDependencies = resConfig['bs-dependencies'] || [];
     const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
@@ -56,34 +55,18 @@ export default class SetupCommand extends BaseCommand {
 
     const gentypeConfig = resConfig['gentypeconfig'];
 
-    const getRescriptPackages = (pkgNames: string[]) => {
-      const selection: Array<Package> = [];
-
-      for (const pkgName of pkgNames) {
-        const ident = structUtils.parseIdent(pkgName);
-        const descriptor = topLevelPkg.dependencies.get(ident.identHash);
-        const resolution = project.storedResolutions.get(descriptor.descriptorHash);
-        if (!resolution) {
-          throw new Error('Assertion failed: The resolution should have been registered');
-        }
-        const pkg = project.storedPackages.get(resolution);
-        if (!pkg) {
-          throw new Error('Assertion failed: The package should have been registered');
-        }
-
-        selection.push(pkg);
-      }
-
-      return selection;
-    };
-
-    const resPkgs = getRescriptPackages([
+    const resPkgs = await this.getRescriptPackages([
       'rescript',
       gentypeConfig && 'gentype',
       ...resDependencies,
       ...resDevDependencies,
       ...resPpxDependencies,
-    ].filter(Boolean));
+    ].filter(Boolean), {
+      workspace,
+      project,
+      cache,
+      configuration,
+    });
 
     const unplug = await StreamReport.start({
       configuration,
@@ -127,6 +110,81 @@ export default class SetupCommand extends BaseCommand {
     }
 
     return exitCode;
+  }
+
+  async getRescriptPackages(packageNames: string[], {
+    workspace,
+    project,
+    configuration,
+    cache,
+  }: {
+    workspace: Workspace,
+    project: Project,
+    configuration: Configuration,
+    cache?: Cache,
+  }) {
+    const seen: Set<LocatorHash> = new Set();
+    const selection: Array<Package> = [];
+
+    const fetcher = configuration.makeFetcher();
+    const fetcherOptions = {
+      project,
+      fetcher,
+      cache,
+      report: new ThrowReport(),
+      checksums: project.storedChecksums,
+    };
+
+    const traverse = async (pkg: Package) => {
+      if (seen.has(pkg.locatorHash)) {
+        return;
+      }
+      seen.add(pkg.locatorHash);
+
+      if (!project.tryWorkspaceByLocator(pkg)) {
+        selection.push(pkg);
+      }
+
+      const result = await fetcher.fetch(pkg, fetcherOptions);
+      try {
+        const resConfig = await result.packageFs.readFilePromise(ppath.join(result.prefixPath, 'bsconfig.json' as Filename), 'utf8')
+          .then(JSON.parse) || {};
+        const resDependencies = resConfig['bs-dependencies'] || [];
+
+        for (const pkgName of resDependencies) {
+          const ident = structUtils.parseIdent(pkgName);
+          const descriptor = pkg.dependencies.get(ident.identHash);
+          const resolution = project.storedResolutions.get(descriptor.descriptorHash);
+          if (!resolution) {
+            throw new Error(`Assertion failed: The resolution should have been registered`);
+          }
+          const nextPkg = project.storedPackages.get(resolution);
+          if (!nextPkg) {
+            throw new Error(`Assertion failed: The package should have been registered`);
+          }
+          await traverse(nextPkg);
+        }
+      } finally {
+        result.releaseFs();
+      }
+    };
+
+    for (const packageName of packageNames) {
+      const ident = structUtils.parseIdent(packageName);
+      const descriptor = workspace.dependencies.get(ident.identHash);
+      const resolution = project.storedResolutions.get(descriptor.descriptorHash);
+      if (!resolution) {
+        throw new Error('Assertion failed: The resolution should have been registered');
+      }
+      const pkg = project.storedPackages.get(resolution);
+      if (!pkg) {
+        throw new Error('Assertion failed: The package should have been registered');
+      }
+
+      await traverse(pkg);
+    }
+
+    return selection;
   }
 
   async linkPath(fs: FakeFS<any>, target: PortablePath, dest: PortablePath) {
