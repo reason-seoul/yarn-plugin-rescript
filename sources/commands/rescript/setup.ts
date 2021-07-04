@@ -20,7 +20,8 @@ function getUnpluggedPath(locator: Locator, {configuration}: {configuration: Con
 }
 
 // 1. bsconfig.json 에서 디펜던시 정보 읽는다!
-// 2. rescript 의존성을 node_modules 아래에 복사한다!
+// 2. rescript 의존성을 unplug 한다! (없으면 add 함)
+// 3. node_modules 아래 symbolic link 만든다!
 
 export default class SetupCommand extends BaseCommand {
   @Command.Path('set', 'rescript')
@@ -152,8 +153,7 @@ export default class SetupCommand extends BaseCommand {
       checksums: project.storedChecksums,
     }
 
-    // TODO: import 할 때 경로 문제가 있어 단순 복사하면 안되고
-    // 모든 패키지를 반드시 unplug하고 symlink를 만들어야 함.
+    await this.cli.run(["unplug", ...patterns])
 
     for (const pkg of selection) {
       // postinstall을 사용하는 package는 unplug된 폴더를 사용
