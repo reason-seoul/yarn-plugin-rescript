@@ -54,6 +54,8 @@ export default class SetupCommand extends BaseCommand {
         ppx.split('/').slice(0, -1).slice(0, 2).join('/')
       );
 
+    const gentypeConfig = resConfig['gentypeconfig'];
+
     const getRescriptPackages = (pkgNames: string[]) => {
       const selection: Array<Package> = [];
 
@@ -77,10 +79,11 @@ export default class SetupCommand extends BaseCommand {
 
     const resPkgs = getRescriptPackages([
       'rescript',
+      gentypeConfig && 'gentype',
       ...resDependencies,
       ...resDevDependencies,
       ...resPpxDependencies,
-    ]);
+    ].filter(Boolean));
 
     const unplug = await StreamReport.start({
       configuration,
