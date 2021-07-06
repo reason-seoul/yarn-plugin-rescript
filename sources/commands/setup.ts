@@ -45,17 +45,16 @@ export default class SetupCommand extends BaseCommand {
     }
 
     const resConfig = await this.realFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
-    const resDependencies = resConfig['bs-dependencies'] || [];
-    const resDevDependencies = resConfig['bs-dev-dependencies'] || [];
+    const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
+    const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
     const resPpxDependencies = (resConfig['ppx-flags'] || [])
-      .map((ppx: any) => Array.isArray(ppx) ? ppx[0] : ppx)
-      .map((ppx: string) =>
-        ppx.split('/').slice(0, -1).slice(0, 2).join('/')
-      );
+      .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
+      .map((ppx: string) => ppx.match(/^[^\/]+|@[^\/]+\/[^\/]+/)?.[0])
+      .filter(Boolean) as string[];
 
     const gentypeConfig = resConfig['gentypeconfig'];
 
-    const resPkgs = await this.getRescriptPackages([
+    const resPackages = await this.getRescriptPackages([
       'rescript',
       gentypeConfig && 'gentype',
       ...resDependencies,
@@ -73,31 +72,30 @@ export default class SetupCommand extends BaseCommand {
       stdout: this.context.stdout,
       json: this.json,
     }, async report => {
-      let shouldUnplug = false;
-      for (const pkg of resPkgs) {
+      let shouldLink = false;
+      for (const pkg of resPackages) {
         const { version } = pkg;
         const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
           structUtils.makeDescriptor(pkg, version),
         );
         if (!dependencyMeta.unplugged) {
           dependencyMeta.unplugged = true;
-          shouldUnplug = true;
+          shouldLink = true;
         }
       }
-      if (shouldUnplug) {
+      if (shouldLink) {
         await project.topLevelWorkspace.persistManifest();
         report.reportSeparator();
         await project.linkEverything({ cache, report });
       }
     });
 
-    exitCode = unplug.exitCode();
-    if (exitCode !== 0) {
+    if ((exitCode = unplug.exitCode()) !== 0) {
       return exitCode;
     }
 
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
-    for (const pkg of resPkgs) {
+    for (const pkg of resPackages) {
       const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
 
       const pkgName = structUtils.stringifyIdent(pkg);
@@ -127,13 +125,6 @@ export default class SetupCommand extends BaseCommand {
     const selection: Array<Package> = [];
 
     const fetcher = configuration.makeFetcher();
-    const fetcherOptions = {
-      project,
-      fetcher,
-      cache,
-      report: new ThrowReport(),
-      checksums: project.storedChecksums,
-    };
 
     const traverse = async (pkg: Package) => {
       if (seen.has(pkg.locatorHash)) {
@@ -145,11 +136,20 @@ export default class SetupCommand extends BaseCommand {
         selection.push(pkg);
       }
 
-      const result = await fetcher.fetch(pkg, fetcherOptions);
+      const report = new ThrowReport();
+      const result = await fetcher.fetch(pkg, {
+        project,
+        fetcher,
+        cache,
+        report,
+        checksums: project.storedChecksums,
+      });
       try {
-        const resConfig = await result.packageFs.readFilePromise(ppath.join(result.prefixPath, 'bsconfig.json' as Filename), 'utf8')
+        const resConfig = await result.packageFs
+          .readFilePromise(ppath.join(result.prefixPath, 'bsconfig.json' as Filename), 'utf8')
           .then(JSON.parse) || {};
-        const resDependencies = resConfig['bs-dependencies'] || [];
+
+        const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
 
         for (const pkgName of resDependencies) {
           const ident = structUtils.parseIdent(pkgName);
@@ -166,6 +166,7 @@ export default class SetupCommand extends BaseCommand {
         }
       } finally {
         result.releaseFs();
+        await report.finalize();
       }
     };
 
@@ -180,10 +181,8 @@ export default class SetupCommand extends BaseCommand {
       if (!pkg) {
         throw new Error('Assertion failed: The package should have been registered');
       }
-
       await traverse(pkg);
     }
-
     return selection;
   }
 
