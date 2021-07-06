@@ -13,9 +13,9 @@ import type { FakeFS, PortablePath } from '@yarnpkg/fslib';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 import { pnpUtils } from '@yarnpkg/plugin-pnp';
 
-export default class SetupCommand extends BaseCommand {
+export default class LinkCommand extends BaseCommand {
   static usage = Command.Usage({
-    description: 'Setup rescript dependencies',
+    description: 'Link rescript dependencies',
   });
 
   realFs = new NodeFS();
@@ -23,7 +23,7 @@ export default class SetupCommand extends BaseCommand {
   @Command.Boolean('Format the output as an NDJSON stream')
   json: boolean;
 
-  @Command.Path('res', 'setup')
+  @Command.Path('res', 'link')
   async execute() {
     let exitCode = 0;
 

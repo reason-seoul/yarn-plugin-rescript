@@ -1,12 +1,12 @@
 import type { Plugin } from '@yarnpkg/core';
 
-import SetupCommand from './commands/setup';
+import LinkCommand from './commands/link';
 
 const plugin: Plugin = {
   hooks: {
   },
   commands: [
-    SetupCommand,
+    LinkCommand,
   ],
 };
 
