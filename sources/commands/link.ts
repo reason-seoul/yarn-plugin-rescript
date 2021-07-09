@@ -147,7 +147,9 @@ export default class LinkCommand extends BaseCommand {
       try {
         const resConfig = await result.packageFs
           .readFilePromise(ppath.join(result.prefixPath, 'bsconfig.json' as Filename), 'utf8')
-          .then(JSON.parse) || {};
+          .then(JSON.parse)
+          // gentype doesn't have bsconfig.json
+          .catch(() => {}) || {};
 
         const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
 
