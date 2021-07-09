@@ -49,7 +49,7 @@ export default class LinkCommand extends BaseCommand {
     const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
     const resPpxDependencies = (resConfig['ppx-flags'] || [])
       .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
-      .map((ppx: string) => ppx.match(/^[^\/]+|@[^\/]+\/[^\/]+/)?.[0])
+      .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
       .filter(Boolean) as string[];
 
     const gentypeConfig = resConfig['gentypeconfig'];
