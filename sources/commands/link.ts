@@ -49,7 +49,7 @@ export default class LinkCommand extends BaseCommand {
     const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
     const resPpxDependencies = (resConfig['ppx-flags'] || [])
       .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
-      .map((ppx: string) => ppx.match(/^[^\/]+|@[^\/]+\/[^\/]+/)?.[0])
+      .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
       .filter(Boolean) as string[];
 
     const gentypeConfig = resConfig['gentypeconfig'];
@@ -147,7 +147,9 @@ export default class LinkCommand extends BaseCommand {
       try {
         const resConfig = await result.packageFs
           .readFilePromise(ppath.join(result.prefixPath, 'bsconfig.json' as Filename), 'utf8')
-          .then(JSON.parse) || {};
+          .then(JSON.parse)
+          // gentype doesn't have bsconfig.json
+          .catch(() => {}) || {};
 
         const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
 
