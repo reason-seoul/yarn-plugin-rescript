@@ -2,6 +2,7 @@ import type { Plugin } from '@yarnpkg/core';
 
 import InitCommand from './commands/init';
 import LinkCommand from './commands/link';
+import AddCommand from './commands/add';
 
 const plugin: Plugin = {
   hooks: {
@@ -9,6 +10,7 @@ const plugin: Plugin = {
   commands: [
     InitCommand,
     LinkCommand,
+    AddCommand,
   ],
 };
 
