@@ -251,7 +251,8 @@ export default class InitCommand extends BaseCommand {
         'external-std': externalStd === true ? '@rescript/std' : externalStd,
       },
       'bs-dependencies': [
-      ],
+        reactJsx && '@rescript/react',
+      ].filter(Boolean),
       'bs-dev-dependencies': [
       ],
       ...gentype && {
