@@ -15,18 +15,18 @@ import { pnpUtils } from '@yarnpkg/plugin-pnp';
 
 export default class LinkCommand extends BaseCommand {
   static usage = Command.Usage({
-    description: 'Link rescript dependencies',
+    description: 'Link ReScript dependencies',
   });
 
-  realFs = new NodeFS();
+  defaultFs = new NodeFS();
 
-  @Command.Boolean('Format the output as an NDJSON stream')
+  @Command.Boolean('--json', {
+    description: 'Format the output as an NDJSON stream',
+  })
   json: boolean;
 
   @Command.Path('res', 'link')
-  async execute() {
-    let exitCode = 0;
-
+  async execute(): Promise<number> {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
     const { project, workspace } = await Project.find(configuration, this.context.cwd);
     const cache = await Cache.find(configuration);
@@ -38,13 +38,13 @@ export default class LinkCommand extends BaseCommand {
     await project.restoreInstallState();
 
     const resConfigPath = ppath.join(workspace.cwd, 'bsconfig.json' as Filename);
-    const resConfigExist = await this.realFs.existsPromise(resConfigPath);
+    const resConfigExist = await this.defaultFs.existsPromise(resConfigPath);
     if (!resConfigExist) {
       console.log('TODO: res init first');
       return 1;
     }
 
-    const resConfig = await this.realFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
+    const resConfig = await this.defaultFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
     const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
     const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
     const resPpxDependencies = (resConfig['ppx-flags'] || [])
@@ -86,12 +86,12 @@ export default class LinkCommand extends BaseCommand {
       if (shouldLink) {
         await project.topLevelWorkspace.persistManifest();
         report.reportSeparator();
-        await project.linkEverything({ cache, report });
+        await project.linkEverything({ cache, report, skipBuild: false });
       }
     });
 
-    if ((exitCode = unplug.exitCode()) !== 0) {
-      return exitCode;
+    if (unplug.hasErrors()) {
+      return unplug.exitCode();
     }
 
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
@@ -103,11 +103,11 @@ export default class LinkCommand extends BaseCommand {
       const targetPath = ppath.join(unpluggedPath, Filename.nodeModules, pkgName as Filename);
       const destPath = ppath.join(nodeModules, pkgName as Filename);
 
-      await this.realFs.mkdirpPromise(ppath.dirname(destPath));
-      await this.linkPath(this.realFs, targetPath, destPath);
+      await this.defaultFs.mkdirpPromise(ppath.dirname(destPath));
+      await this.linkPath(this.defaultFs, targetPath, destPath);
     }
 
-    return exitCode;
+    return 0;
   }
 
   async getRescriptPackages(packageNames: string[], {
