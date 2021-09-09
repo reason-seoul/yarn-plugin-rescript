@@ -37,35 +37,61 @@ export default class LinkCommand extends BaseCommand {
 
     await project.restoreInstallState();
 
-    const resConfigPath = ppath.join(workspace.cwd, 'bsconfig.json' as Filename);
-    const resConfigExist = await this.defaultFs.existsPromise(resConfigPath);
-    if (!resConfigExist) {
+    const loadDependencyInfo = async (resConfigPath: PortablePath) => {
+      const resConfigExist = await this.defaultFs.existsPromise(resConfigPath);
+      if (!resConfigExist) {
+        return null;
+      }
+
+      const resConfig = await this.defaultFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
+      const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
+      const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
+      const resPpxDependencies = (resConfig['ppx-flags'] || [])
+        .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
+        .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
+        .filter(Boolean) as string[];
+
+      const hasGentype = resConfig['gentypeconfig'] != null;
+
+      return { resDependencies, resDevDependencies, resPpxDependencies, hasGentype };
+    }
+
+    const resConfigPaths = [workspace.cwd, ...workspace.workspacesCwds.values()]
+    const resDependencyInfos = await Promise.all(
+      resConfigPaths.map(async workspaceCwd => ({
+        workspaceCwd,
+        info: await loadDependencyInfo(ppath.join(workspaceCwd, 'bsconfig.json' as Filename))
+      }))
+    ).then(arr => arr.filter(Boolean));
+
+    if (resDependencyInfos.length === 0) {
       console.log('TODO: res init first');
       return 1;
     }
 
-    const resConfig = await this.defaultFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
-    const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
-    const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
-    const resPpxDependencies = (resConfig['ppx-flags'] || [])
-      .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
-      .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
-      .filter(Boolean) as string[];
+    const resPackages = await Promise.all(
+      resDependencyInfos.map(async ({
+        workspaceCwd,
+        info: { resDependencies, resDevDependencies, resPpxDependencies, hasGentype },
+      }) => {
+        const { project, workspace } = await Project.find(configuration, workspaceCwd);
 
-    const gentypeConfig = resConfig['gentypeconfig'];
+        await project.restoreInstallState();
 
-    const resPackages = await this.getRescriptPackages([
-      'rescript',
-      gentypeConfig && 'gentype',
-      ...resDependencies,
-      ...resDevDependencies,
-      ...resPpxDependencies,
-    ].filter(Boolean), {
-      workspace,
-      project,
-      cache,
-      configuration,
-    });
+        return this.getRescriptPackages([
+          'rescript',
+          ...(hasGentype ? 'gentype' : []),
+          ...resDependencies,
+          ...resDevDependencies,
+          ...resPpxDependencies,
+        ].filter(Boolean), {
+          workspace,
+          project,
+          cache,
+          configuration,
+        });
+      })
+    ).then(arrays => <Package[]>[].concat(...arrays));
 
     const unplug = await StreamReport.start({
       configuration,
