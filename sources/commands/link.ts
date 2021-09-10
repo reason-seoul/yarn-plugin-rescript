@@ -69,7 +69,7 @@ export default class LinkCommand extends BaseCommand {
       return 1;
     }
 
-    const resPackages = await Promise.all(
+    const { packages, packageWorkspaces } = await Promise.all(
       resDependencyInfos.map(async ({
         workspaceCwd,
         info: { resDependencies, resDevDependencies, resPpxDependencies, hasGentype },
@@ -91,7 +91,14 @@ export default class LinkCommand extends BaseCommand {
           configuration,
         });
       })
-    ).then(arrays => <Package[]>[].concat(...arrays));
+    ).then(packagesArr => packagesArr.reduce(
+      (acc, packages) => {
+        acc.packages.push(...packages.packages);
+        acc.packageWorkspaces.push(...packages.packageWorkspaces);
+        return acc;
+      },
+      { packages: [], packageWorkspaces: [] }
+    ));
 
     const unplug = await StreamReport.start({
       configuration,
@@ -99,7 +106,7 @@ export default class LinkCommand extends BaseCommand {
       json: this.json,
     }, async report => {
       let shouldLink = false;
-      for (const pkg of resPackages) {
+      for (const pkg of packages) {
         const { version } = pkg;
         const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
           structUtils.makeDescriptor(pkg, version),
@@ -121,12 +128,21 @@ export default class LinkCommand extends BaseCommand {
     }
 
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
-    for (const pkg of resPackages) {
+    for (const pkg of packages) {
       const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
 
       const pkgName = structUtils.stringifyIdent(pkg);
 
       const targetPath = ppath.join(unpluggedPath, Filename.nodeModules, pkgName as Filename);
+      const destPath = ppath.join(nodeModules, pkgName as Filename);
+
+      await this.defaultFs.mkdirpPromise(ppath.dirname(destPath));
+      await this.linkPath(this.defaultFs, targetPath, destPath);
+    }
+    for (const workspace of packageWorkspaces) {
+      const pkgName = structUtils.stringifyIdent(workspace.locator);
+
+      const targetPath = workspace.cwd;
       const destPath = ppath.join(nodeModules, pkgName as Filename);
 
       await this.defaultFs.mkdirpPromise(ppath.dirname(destPath));
@@ -148,7 +164,8 @@ export default class LinkCommand extends BaseCommand {
     cache?: Cache,
   }) {
     const seen: Set<LocatorHash> = new Set();
-    const selection: Array<Package> = [];
+    const packages: Array<Package> = [];
+    const packageWorkspaces: Array<Workspace> = [];
 
     const fetcher = configuration.makeFetcher();
 
@@ -158,8 +175,11 @@ export default class LinkCommand extends BaseCommand {
       }
       seen.add(pkg.locatorHash);
 
-      if (!project.tryWorkspaceByLocator(pkg)) {
-        selection.push(pkg);
+      let pkgWorkspace: Workspace | null;
+      if (pkgWorkspace = project.tryWorkspaceByLocator(pkg)) {
+        packageWorkspaces.push(pkgWorkspace);
+      } else {
+        packages.push(pkg);
       }
 
       const report = new ThrowReport();
@@ -193,7 +213,7 @@ export default class LinkCommand extends BaseCommand {
           await traverse(nextPkg);
         }
       } finally {
-        result.releaseFs();
+        result.releaseFs?.();
         await report.finalize();
       }
     };
@@ -211,7 +231,7 @@ export default class LinkCommand extends BaseCommand {
       }
       await traverse(pkg);
     }
-    return selection;
+    return { packages, packageWorkspaces };
   }
 
   async linkPath(fs: FakeFS<any>, target: PortablePath, dest: PortablePath) {
