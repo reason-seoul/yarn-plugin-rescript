@@ -62,7 +62,7 @@ export default class LinkCommand extends BaseCommand {
         workspaceCwd,
         info: await loadDependencyInfo(ppath.join(workspaceCwd, 'bsconfig.json' as Filename))
       }))
-    ).then(arr => arr.filter(Boolean));
+    ).then(arr => arr.filter(v => v.info != null));
 
     if (resDependencyInfos.length === 0) {
       console.log('TODO: res init first');
