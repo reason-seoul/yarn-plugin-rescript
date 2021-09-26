@@ -3897,6 +3897,7 @@ typescript@^4.4.3:
   version: 0.0.0-use.local
   resolution: "yarn-plugin-rescript@workspace:."
   dependencies:
+    "@arcanis/slice-ansi": ^1.0.2
     "@types/node": ^16.10.1
     "@yarnpkg/builder": ^3.1.0-rc.4
     "@yarnpkg/cli": ^3.1.0-rc.7

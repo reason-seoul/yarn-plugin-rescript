@@ -8,6 +8,7 @@
     "sync": "yarn build && yarn plugin import ./bundles/@yarnpkg/plugin-rescript.js"
   },
   "dependencies": {
+    "@arcanis/slice-ansi": "^1.0.2",
     "@yarnpkg/cli": "^3.1.0-rc.7",
     "@yarnpkg/core": "^3.1.0-rc.8",
     "@yarnpkg/fslib": "^2.6.0-rc.7",

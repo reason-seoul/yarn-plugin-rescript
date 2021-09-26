@@ -35,6 +35,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
         [null, {
           "packageLocation": "./",
           "packageDependencies": [
+            ["@arcanis/slice-ansi", "npm:1.0.2"],
             ["@types/node", "npm:16.10.1"],
             ["@yarnpkg/builder", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.1.0-rc.4"],
             ["@yarnpkg/cli", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.1.0-rc.7"],
@@ -4778,6 +4779,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageLocation": "./",
           "packageDependencies": [
             ["yarn-plugin-rescript", "workspace:."],
+            ["@arcanis/slice-ansi", "npm:1.0.2"],
             ["@types/node", "npm:16.10.1"],
             ["@yarnpkg/builder", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.1.0-rc.4"],
             ["@yarnpkg/cli", "virtual:8f3b0d47c0cf7a97125467f0dbc031167121c0bd261d61fc456d817bf21f8ad5c5e431b6504f3fa2aed095a18753c0928f073ae67fec9869b605138ed2177e5a#npm:3.1.0-rc.7"],
