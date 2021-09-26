@@ -37,35 +37,68 @@ export default class LinkCommand extends BaseCommand {
 
     await project.restoreInstallState();
 
-    const resConfigPath = ppath.join(workspace.cwd, 'bsconfig.json' as Filename);
-    const resConfigExist = await this.defaultFs.existsPromise(resConfigPath);
-    if (!resConfigExist) {
+    const loadDependencyInfo = async (resConfigPath: PortablePath) => {
+      const resConfigExist = await this.defaultFs.existsPromise(resConfigPath);
+      if (!resConfigExist) {
+        return null;
+      }
+
+      const resConfig = await this.defaultFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
+      const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
+      const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
+      const resPpxDependencies = (resConfig['ppx-flags'] || [])
+        .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
+        .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
+        .filter(Boolean) as string[];
+
+      const hasGentype = resConfig['gentypeconfig'] != null;
+
+      return { resDependencies, resDevDependencies, resPpxDependencies, hasGentype };
+    }
+
+    const resConfigPaths = [workspace.cwd, ...workspace.workspacesCwds.values()]
+    const resDependencyInfos = await Promise.all(
+      resConfigPaths.map(async workspaceCwd => ({
+        workspaceCwd,
+        info: await loadDependencyInfo(ppath.join(workspaceCwd, 'bsconfig.json' as Filename))
+      }))
+    ).then(arr => arr.filter(v => v.info != null));
+
+    if (resDependencyInfos.length === 0) {
       console.log('TODO: res init first');
       return 1;
     }
 
-    const resConfig = await this.defaultFs.readFilePromise(resConfigPath, 'utf8').then(JSON.parse);
-    const resDependencies = (resConfig['bs-dependencies'] || []) as string[];
-    const resDevDependencies = (resConfig['bs-dev-dependencies'] || []) as string[];
-    const resPpxDependencies = (resConfig['ppx-flags'] || [])
-      .map((flag: string | string[]) => Array.isArray(flag) ? flag[0] : flag)
-      .map((ppx: string) => ppx.match(/^@[^\/]+\/[^\/]+|^[^\/]+/)?.[0])
-      .filter(Boolean) as string[];
+    const { packages, packageWorkspaces } = await Promise.all(
+      resDependencyInfos.map(async ({
+        workspaceCwd,
+        info: { resDependencies, resDevDependencies, resPpxDependencies, hasGentype },
+      }) => {
+        const { project, workspace } = await Project.find(configuration, workspaceCwd);
 
-    const gentypeConfig = resConfig['gentypeconfig'];
+        await project.restoreInstallState();
 
-    const resPackages = await this.getRescriptPackages([
-      'rescript',
-      gentypeConfig && 'gentype',
-      ...resDependencies,
-      ...resDevDependencies,
-      ...resPpxDependencies,
-    ].filter(Boolean), {
-      workspace,
-      project,
-      cache,
-      configuration,
-    });
+        return this.getRescriptPackages([
+          'rescript',
+          ...(hasGentype ? 'gentype' : []),
+          ...resDependencies,
+          ...resDevDependencies,
+          ...resPpxDependencies,
+        ].filter(Boolean), {
+          workspace,
+          project,
+          cache,
+          configuration,
+        });
+      })
+    ).then(packagesArr => packagesArr.reduce(
+      (acc, packages) => {
+        acc.packages.push(...packages.packages);
+        acc.packageWorkspaces.push(...packages.packageWorkspaces);
+        return acc;
+      },
+      { packages: [], packageWorkspaces: [] }
+    ));
 
     const unplug = await StreamReport.start({
       configuration,
@@ -73,7 +106,7 @@ export default class LinkCommand extends BaseCommand {
       json: this.json,
     }, async report => {
       let shouldLink = false;
-      for (const pkg of resPackages) {
+      for (const pkg of packages) {
         const { version } = pkg;
         const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
           structUtils.makeDescriptor(pkg, version),
@@ -95,12 +128,21 @@ export default class LinkCommand extends BaseCommand {
     }
 
     const nodeModules = ppath.join(project.cwd, Filename.nodeModules);
-    for (const pkg of resPackages) {
+    for (const pkg of packages) {
       const unpluggedPath = pnpUtils.getUnpluggedPath(pkg, { configuration });
 
       const pkgName = structUtils.stringifyIdent(pkg);
 
       const targetPath = ppath.join(unpluggedPath, Filename.nodeModules, pkgName as Filename);
+      const destPath = ppath.join(nodeModules, pkgName as Filename);
+
+      await this.defaultFs.mkdirpPromise(ppath.dirname(destPath));
+      await this.linkPath(this.defaultFs, targetPath, destPath);
+    }
+    for (const workspace of packageWorkspaces) {
+      const pkgName = structUtils.stringifyIdent(workspace.locator);
+
+      const targetPath = workspace.cwd;
       const destPath = ppath.join(nodeModules, pkgName as Filename);
 
       await this.defaultFs.mkdirpPromise(ppath.dirname(destPath));
@@ -122,7 +164,8 @@ export default class LinkCommand extends BaseCommand {
     cache?: Cache,
   }) {
     const seen: Set<LocatorHash> = new Set();
-    const selection: Array<Package> = [];
+    const packages: Array<Package> = [];
+    const packageWorkspaces: Array<Workspace> = [];
 
     const fetcher = configuration.makeFetcher();
 
@@ -132,8 +175,11 @@ export default class LinkCommand extends BaseCommand {
       }
       seen.add(pkg.locatorHash);
 
-      if (!project.tryWorkspaceByLocator(pkg)) {
-        selection.push(pkg);
+      let pkgWorkspace: Workspace | null;
+      if (pkgWorkspace = project.tryWorkspaceByLocator(pkg)) {
+        packageWorkspaces.push(pkgWorkspace);
+      } else {
+        packages.push(pkg);
       }
 
       const report = new ThrowReport();
@@ -167,7 +213,7 @@ export default class LinkCommand extends BaseCommand {
           await traverse(nextPkg);
         }
       } finally {
-        result.releaseFs();
+        result.releaseFs?.();
         await report.finalize();
       }
     };
@@ -185,7 +231,7 @@ export default class LinkCommand extends BaseCommand {
       }
       await traverse(pkg);
     }
-    return selection;
+    return { packages, packageWorkspaces };
   }
 
   async linkPath(fs: FakeFS<any>, target: PortablePath, dest: PortablePath) {
