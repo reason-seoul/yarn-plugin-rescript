@@ -18,6 +18,10 @@ Any feedbacks are welcome!
 - Automatic bsconfig management
 - Workspaces support
 
+## Demo
+
+![Demo of initializing ReScript & React using yarn-plugin-rescript](demo.mp4)
+
 ## Installation
 
 Berry requires per-project activation. Please see the [guide](https://yarnpkg.com/getting-started/install#per-project-install) for detail
