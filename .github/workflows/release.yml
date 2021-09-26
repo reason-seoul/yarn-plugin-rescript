@@ -11,9 +11,12 @@ jobs:
   build-and-publish:
     name: Build w/ Node.js and publish release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v2
-
+        with:
+          fetch-depth: 0
       - name: Use Node.js 14.x
         uses: actions/setup-node@v2
         with:
