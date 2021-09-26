@@ -1,24 +1,26 @@
-import { Command, UsageError } from 'clipanion';
+import { Command, Option, UsageError } from 'clipanion';
 import {
   Configuration,
   Project,
   structUtils,
   MessageName,
+  CommandContext,
 } from '@yarnpkg/core';
-import { BaseCommand, WorkspaceRequiredError } from '@yarnpkg/cli';
+import { WorkspaceRequiredError } from '@yarnpkg/cli';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 
 import Report, { applyHyperlink } from '../Report';
 
-export default class InitCommand extends BaseCommand {
-  static usage = Command.Usage({
+export default class InitCommand extends Command<CommandContext> {
+  static paths = [['res', 'init']];
+  static usage = {
     description: 'Initialize ReScript for the current workspace',
     details : `
       Initialize ReScript for the current workspace.
       It will automatically install 'rescript' package, and generate \`bsconfig.json\`.
       It will also install React and genType as you specify.
     `,
-    examples: [
+    usage: [
       [
         'Install rescript, generate bsconfig.json',
         'yarn res init',
@@ -44,36 +46,30 @@ export default class InitCommand extends BaseCommand {
         'yarn res init --with-external-std',
       ],
     ],
+  };
+
+  json = Option.Boolean('--json', false, {
+    description: 'Format the output as an NDJSON stream',
   });
 
-  @Command.Boolean('--json', {
-    description: 'Format the output as an NDJSON stream',
-  })
-  json = false;
-
-  @Command.String('--module', {
+  moduleType = Option.String('--module', 'commonjs', {
     description: 'Specify module type in ReScript complier output, can be one of "commonjs", "es6", or "es6-global" (default: "commonjs")',
-  })
-  moduleType = 'commonjs';
+  });
 
-  @Command.Boolean('--with-react', {
+  withReact = Option.Boolean('--with-react', false, {
     description: 'Enable ReScript React and JSX syntax',
-  })
-  withReact = false;
+  });
 
-  @Command.String('--with-gentype', {
+  withGentype = Option.String('--with-gentype', {
     description: 'Enable genType, can be one of "typescript", "flow", or "untyped" (default: "untyped")',
     tolerateBoolean: true,
-  })
-  withGentype: string | boolean = false;
+  });
 
-  @Command.String('--with-external-std', {
+  externalStd = Option.String('--with-external-std', {
     description: 'Use external std library, and install ReScript as dev-only dependency',
     tolerateBoolean: true,
-  })
-  externalStd: string | boolean = false;
+  });
 
-  @Command.Path('res', 'init')
   async execute(): Promise<number> {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
     const { project, workspace } = await Project.find(configuration, this.context.cwd);

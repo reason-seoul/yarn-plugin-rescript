@@ -1,28 +1,27 @@
-import { Command } from 'clipanion';
+import { Command, Option } from 'clipanion';
 import {
   Configuration,
   Project,
   MessageName,
   LightReport,
+  CommandContext,
 } from '@yarnpkg/core';
-import { BaseCommand, WorkspaceRequiredError } from '@yarnpkg/cli';
+import { WorkspaceRequiredError } from '@yarnpkg/cli';
 import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 
-export default class AddCommand extends BaseCommand {
-  static usage = Command.Usage({
+export default class AddCommand extends Command<CommandContext> {
+  static paths = [['res', 'add']];
+  static usage = {
     description: 'Install dependencies',
     details: 'Install dependencies, add them to both package.json and bsconfig.json',
+  };
+
+  dev = Option.Boolean('-D, --dev', {
+    description: 'Install packages as devDependencies',
   });
 
-  @Command.Boolean('-D, --dev', {
-    description: 'Install packages as devDependencies',
-  })
-  dev = false;
+  packages = Option.Rest();
 
-  @Command.Rest()
-  packages: string[] = [];
-
-  @Command.Path('res', 'add')
   async execute(): Promise<number> {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
     const { project, workspace } = await Project.find(configuration, this.context.cwd);
