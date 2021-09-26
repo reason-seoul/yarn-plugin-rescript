@@ -1,4 +1,4 @@
-import { Command } from 'clipanion';
+import { Option } from 'clipanion';
 import type { Workspace, Package, LocatorHash } from '@yarnpkg/core';
 import {
   Cache,
@@ -14,18 +14,17 @@ import { ppath, NodeFS, Filename } from '@yarnpkg/fslib';
 import { pnpUtils } from '@yarnpkg/plugin-pnp';
 
 export default class LinkCommand extends BaseCommand {
-  static usage = Command.Usage({
+  static paths = [['res', 'link']];
+  static usage = {
     description: 'Link ReScript dependencies',
-  });
+  };
 
   defaultFs = new NodeFS();
 
-  @Command.Boolean('--json', {
+  json = Option.Boolean('--json', false, {
     description: 'Format the output as an NDJSON stream',
-  })
-  json: boolean;
+  });
 
-  @Command.Path('res', 'link')
   async execute(): Promise<number> {
     const configuration = await Configuration.find(this.context.cwd, this.context.plugins);
     const { project, workspace } = await Project.find(configuration, this.context.cwd);
@@ -119,7 +118,7 @@ export default class LinkCommand extends BaseCommand {
       if (shouldLink) {
         await project.topLevelWorkspace.persistManifest();
         report.reportSeparator();
-        await project.linkEverything({ cache, report, skipBuild: false });
+        await project.linkEverything({ cache, report });
       }
     });
 
