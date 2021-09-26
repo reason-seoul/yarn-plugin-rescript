@@ -29,6 +29,12 @@ jobs:
       - name: Build artifact
         run: yarn build
 
+      - name: Get timestamp
+        id: timestamp
+        run: |
+          echo "::set-output name=date::$(date '+%F')"
+          echo "::set-output name=tag::$(date '+%Y%m%d%H%M')"
+
       - name: Get the short git sha
         id: git-sha
         run: echo "::set-output name=short::$(git rev-parse --short HEAD)"
@@ -39,8 +45,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Prerelease - ${{ steps.git-sha.outputs.short }}
-          tag_name: v0.0.0-${{ steps.git-sha.outputs.short }}
+          name: Prerelease - ${{ steps.timestamp.outputs.date }} - ${{ steps.git-sha.outputs.short }}
+          tag_name: v0.0.0-${{ steps.timestamp.outputs.tag }}-${{ steps.git-sha.outputs.short }}
           prerelease: true
           files: |
             bundles/@yarnpkg/*
