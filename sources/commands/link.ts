@@ -79,7 +79,7 @@ export default class LinkCommand extends BaseCommand {
 
         return this.getRescriptPackages([
           'rescript',
-          ...(hasGentype ? 'gentype' : []),
+          ...(hasGentype ? ['gentype'] : []),
           ...resDependencies,
           ...resDevDependencies,
           ...resPpxDependencies,
