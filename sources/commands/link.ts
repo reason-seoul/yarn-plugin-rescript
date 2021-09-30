@@ -201,6 +201,9 @@ export default class LinkCommand extends BaseCommand {
         for (const pkgName of resDependencies) {
           const ident = structUtils.parseIdent(pkgName);
           const descriptor = pkg.dependencies.get(ident.identHash);
+          if (!descriptor) {
+            throw new Error(`Assertion failed: ${pkgName} is not found. Did you forget to add that package?`);
+          }
           const resolution = project.storedResolutions.get(descriptor.descriptorHash);
           if (!resolution) {
             throw new Error(`Assertion failed: The resolution should have been registered`);
@@ -220,6 +223,9 @@ export default class LinkCommand extends BaseCommand {
     for (const packageName of packageNames) {
       const ident = structUtils.parseIdent(packageName);
       const descriptor = workspace.dependencies.get(ident.identHash);
+      if (!descriptor) {
+        throw new Error(`Assertion failed: ${packageName} is not found. Did you forget to add that package?`);
+      }
       const resolution = project.storedResolutions.get(descriptor.descriptorHash);
       if (!resolution) {
         throw new Error('Assertion failed: The resolution should have been registered');
