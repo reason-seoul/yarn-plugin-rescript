@@ -55,13 +55,16 @@ export default class LinkCommand extends BaseCommand {
       return { resDependencies, resDevDependencies, resPpxDependencies, hasGentype };
     }
 
+    type ArrayValue<T> = T extends Array<infer U> ? U : never;
+    type NonNullableArray<T> = T extends Array<any> ? NonNullable<ArrayValue<T>>[] : never;
+
     const resConfigPaths = [workspace.cwd, ...workspace.workspacesCwds.values()]
     const resDependencyInfos = await Promise.all(
-      resConfigPaths.map(async workspaceCwd => ({
-        workspaceCwd,
-        info: await loadDependencyInfo(ppath.join(workspaceCwd, 'bsconfig.json' as Filename))
-      }))
-    ).then(arr => arr.filter(v => v.info != null));
+      resConfigPaths.map(async workspaceCwd => {
+        const info = await loadDependencyInfo(ppath.join(workspaceCwd, 'bsconfig.json' as Filename))
+        return info && { workspaceCwd, info }
+      })
+    ).then(arr => arr.filter(Boolean) as NonNullableArray<typeof arr>);
 
     if (resDependencyInfos.length === 0) {
       console.log('TODO: res init first');
@@ -108,7 +111,7 @@ export default class LinkCommand extends BaseCommand {
       for (const pkg of packages) {
         const { version } = pkg;
         const dependencyMeta = project.topLevelWorkspace.manifest.ensureDependencyMeta(
-          structUtils.makeDescriptor(pkg, version),
+          structUtils.makeDescriptor(pkg, version ?? '*'),
         );
         if (!dependencyMeta.unplugged) {
           dependencyMeta.unplugged = true;
@@ -157,10 +160,10 @@ export default class LinkCommand extends BaseCommand {
     configuration,
     cache,
   }: {
-    workspace: Workspace,
+    workspace: Workspace | null,
     project: Project,
     configuration: Configuration,
-    cache?: Cache,
+    cache: Cache,
   }) {
     const seen: Set<LocatorHash> = new Set();
     const packages: Array<Package> = [];
@@ -222,7 +225,7 @@ export default class LinkCommand extends BaseCommand {
 
     for (const packageName of packageNames) {
       const ident = structUtils.parseIdent(packageName);
-      const descriptor = workspace.dependencies.get(ident.identHash);
+      const descriptor = workspace?.dependencies.get(ident.identHash);
       if (!descriptor) {
         throw new Error(`Assertion failed: ${packageName} is not found. Did you forget to add that package?`);
       }
@@ -242,7 +245,7 @@ export default class LinkCommand extends BaseCommand {
   async linkPath(fs: FakeFS<any>, target: PortablePath, dest: PortablePath) {
     try {
       await fs.symlinkPromise(target, dest);
-    } catch (err) {
+    } catch (err: any) {
       if (err?.code === 'EEXIST') {
         await fs.unlinkPromise(dest);
         await this.linkPath(fs, target, dest);
