@@ -36,9 +36,9 @@ export default class AddCommand extends Command<CommandContext> {
     }, async report => {
       const exitCode = await this.cli.run([
         'add',
-        this.dev && '--dev',
+        ...(this.dev ? ['--dev'] : []),
         ...this.packages,
-      ].filter(Boolean), this.context);
+      ], this.context);
       if (exitCode !== 0) {
         report.reportErrorOnce(MessageName.EXCEPTION, 'Failed to install packages');
       }

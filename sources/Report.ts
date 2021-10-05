@@ -13,7 +13,7 @@ export default class Report extends LightReport {
 
     try {
       await cb(report);
-    } catch (error) {
+    } catch (error: any) {
       report.reportExceptionOnce(error);
     } finally {
       await report.finalize();
@@ -49,7 +49,7 @@ export default class Report extends LightReport {
     const prefix = formattedName ? `${formattedName}: ` : '';
 
     if (this.#json) {
-      this.reportJson({ type: 'info', name, displayName: this.#formatName(name), data: text });
+      this.reportJson({ type: 'info', name, displayName: name && this.#formatName(name), data: text });
     } else {
       this.#stdout.write(`${this.#truncate(`${formatUtils.pretty(this.#configuration, `➤`, `blueBright`)} ${prefix}${text}`, { truncate: true })}\n`);
     }

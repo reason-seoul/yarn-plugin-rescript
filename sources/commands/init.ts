@@ -98,11 +98,11 @@ export default class InitCommand extends Command<CommandContext> {
         try {
           await this.tryCli([
             'add',
-            this.externalStd && '--dev',
+            ...(this.externalStd ? ['--dev'] : []),
             'rescript',
-          ].filter(Boolean));
-        } catch (error) {
-          report.reportError(MessageName.EXCEPTION, error.message);
+          ]);
+        } catch (error: any) {
+          report.reportError(MessageName.EXCEPTION, error?.message);
           return;
         }
 
@@ -111,8 +111,8 @@ export default class InitCommand extends Command<CommandContext> {
           report.reportInfo(MessageName.UNNAMED, 'Installing latest version of "@rescript/react"');
           try {
             await this.tryCli(['add', 'react', 'react-dom', '@rescript/react']);
-          } catch (error) {
-            report.reportError(MessageName.EXCEPTION, error.message);
+          } catch (error: any) {
+            report.reportError(MessageName.EXCEPTION, error?.message);
             return;
           }
         }
@@ -124,8 +124,8 @@ export default class InitCommand extends Command<CommandContext> {
           report.reportInfo(MessageName.UNNAMED, `Installing latest version of "${externalStd}"`);
           try {
             await this.tryCli(['add', externalStd]);
-          } catch (error) {
-            report.reportError(MessageName.EXCEPTION, error.message);
+          } catch (error: any) {
+            report.reportError(MessageName.EXCEPTION, error?.message);
             return;
           }
         }
@@ -145,8 +145,8 @@ export default class InitCommand extends Command<CommandContext> {
           report.reportInfo(MessageName.UNNAMED, 'Installing latest version of "gentype"');
           try {
             await this.tryCli(['add', '--dev', 'gentype']);
-          } catch (error) {
-            report.reportError(MessageName.EXCEPTION, error.message);
+          } catch (error: any) {
+            report.reportError(MessageName.EXCEPTION, error?.message);
           }
         });
         if (installGentype.hasErrors()) {
@@ -167,10 +167,12 @@ export default class InitCommand extends Command<CommandContext> {
       }, async report => {
         const config = this.renderConfigFile({
           reactJsx: this.withReact,
-          workspaceName: structUtils.stringifyIdent(workspace.manifest.name),
+          workspaceName: workspace.manifest.name
+            ? structUtils.stringifyIdent(workspace.manifest.name)
+            : `anonymous-${Math.round(Math.random() * Number.MAX_SAFE_INTEGER).toString(36)}`,
           moduleType: this.moduleType as 'commonjs' | 'es6' | 'es6-global',
           externalStd: this.externalStd,
-          gentype: this.withGentype as 'typescript' | 'flow' | 'untyped' | boolean,
+          gentype: this.withGentype as 'typescript' | 'flow' | 'untyped' | boolean | undefined,
         });
 
         await defaultFs.writeFilePromise(bsConfigPath, config);
@@ -215,8 +217,8 @@ export default class InitCommand extends Command<CommandContext> {
     workspaceName: string,
     reactJsx: boolean,
     moduleType: 'es6' | 'es6-global' | 'commonjs',
-    externalStd: string | boolean,
-    gentype: 'typescript' | 'flow' | 'untyped' | boolean,
+    externalStd: string | boolean | undefined,
+    gentype: 'typescript' | 'flow' | 'untyped' | boolean | undefined,
   }) {
     return JSON.stringify({
       'name': workspaceName,
