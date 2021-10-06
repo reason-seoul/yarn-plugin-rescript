@@ -1,7 +1,7 @@
 # yarn-plugin-rescript
 
 
-[Yarn (berry)](https://github.com/yarnpkg/berry) based 3rd toolchain for [ReScript](https://rescript-lang.org) projects
+[Yarn (berry)](https://github.com/yarnpkg/berry) based 3rd-party toolchain for [ReScript](https://rescript-lang.org) projects
 
 ----
 
